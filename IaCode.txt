@@ -1,0 +1,144 @@
+# AWS Provider
+provider "aws" {
+  region = "us-east-1"
+}
+
+# AWS EC2 Instance
+resource "aws_instance" "web_server" {
+  ami           = "ami-0c55b159cbfafe1f0" # Amazon Linux 2 AMI
+  instance_type = "t2.micro"
+
+  tags = {
+    Name = "web-server-prod"
+  }
+}
+
+# Google Cloud Provider
+provider "google" {
+  project = "your-gcp-project-id"
+  region  = "us-central1"
+}
+
+# Google Compute Engine VM
+resource "google_compute_instance" "api_server" {
+  name         = "api-server-prod"
+  machine_type = "e2-medium"
+  zone         = "us-central1-a"
+
+  boot_disk {
+    initialize_params {
+      image = "debian-cloud/debian-10"
+    }
+  }
+
+  network_interface {
+    network = "default"
+  }
+}
+
+# Azure Provider
+provider "azurerm" {
+  features {}
+}
+
+# Azure VM
+resource "azurerm_virtual_machine" "app_server" {
+  name                  = "app-server-prod"
+  location              = "East US"
+  resource_group_name   = azurerm_resource_group.prod_resources.name
+  network_interface_ids = [azurerm_network_interface.app_nic.id]
+  vm_size               = "Standard_B1s"
+
+  storage_image_reference {
+    publisher = "Canonical"
+    offer     = "UbuntuServer"
+    sku       = "16.04-LTS"
+    version   = "latest"
+  }
+
+  storage_os_disk {
+    name              = "app-server-osdisk"
+    caching           = "ReadWrite"
+    create_option     = "FromImage"
+    managed_disk_type = "Standard_LRS"
+  }
+
+  os_profile {
+    computer_name  = "app-server"
+    admin_username = "adminuser"
+    admin_password = "Password1234!"
+  }
+
+  os_profile_linux_config {
+    disable_password_authentication = false
+  }
+}
+
+# Azure Resource Group
+resource "azurerm_resource_group" "prod_resources" {
+  name     = "prod-resources"
+  location = "East US"
+}
+
+# Azure Network Interface
+resource "azurerm_network_interface" "app_nic" {
+  name                = "app-server-nic"
+  location            = azurerm_resource_group.prod_resources.location
+  resource_group_name = azurerm_resource_group.prod_resources.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.app_subnet.id
+    private_ip_address_allocation = "Dynamic"
+  }
+}
+
+# Azure Virtual Network
+resource "azurerm_virtual_network" "prod_network" {
+  name                = "prod-network"
+  address_space       = ["10.0.0.0/16"]
+  location            = azurerm_resource_group.prod_resources.location
+  resource_group_name = azurerm_resource_group.prod_resources.name
+}
+
+# Azure Subnet
+resource "azurerm_subnet" "app_subnet" {
+  name                 = "app-subnet"
+  resource_group_name  = azurerm_resource_group.prod_resources.name
+  virtual_network_name = azurerm_virtual_network.prod_network.name
+  address_prefixes     = ["10.0.1.0/24"]
+}
+
+# AWS Load Balancer
+resource "aws_lb" "web_lb" {
+  name               = "web-lb-prod"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.web_sg.id]
+  subnets            = aws_subnet.public_subnet[*].id
+}
+
+# AWS Security Group
+resource "aws_security_group" "web_sg" {
+  name        = "web-sg-prod"
+  description = "Allow HTTP traffic"
+  vpc_id      = aws_vpc.prod_vpc.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# AWS VPC
+resource "aws_vpc" "prod_vpc" {
+  cidr_block = "10.0.0.0/16"
+}
+
+# AWS Subnet
+resource "aws_subnet" "public_subnet" {
+  vpc_id     = aws_vpc.prod_vpc.id
+  cidr_block = "10.0.1.0/24"
+}
